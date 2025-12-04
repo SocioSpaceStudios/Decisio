@@ -1,0 +1,5 @@
+{
+  "name": "Decisio",
+  "description": "An AI-powered decision making assistant that helps analyze options against weighted criteria to provide structured recommendations.",
+  "requestFramePermissions": []
+}
