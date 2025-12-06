@@ -1,6 +1,6 @@
 import React from 'react';
 import { DecisionRecord } from '../types';
-import { Calendar, ChevronRight, Trash2 } from 'lucide-react';
+import { Calendar, ChevronRight, Trash2, Clock } from 'lucide-react';
 
 interface HistoryListProps {
   history: DecisionRecord[];
@@ -12,60 +12,71 @@ interface HistoryListProps {
 const HistoryList: React.FC<HistoryListProps> = ({ history, onSelect, onDelete, onNew }) => {
   if (history.length === 0) {
     return (
-      <div className="text-center py-20 px-4">
-        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">No History Yet</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-6">You haven't saved any decision analyses yet.</p>
+      <div className="glass-card rounded-3xl p-12 text-center animate-fade-in-up">
+        <div className="inline-flex p-4 bg-slate-100 dark:bg-slate-800 rounded-full mb-6 text-slate-400">
+            <Clock size={40} />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-3">No History Yet</h2>
+        <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto">
+            Your past decisions will appear here once you've completed an analysis.
+        </p>
         <button 
           onClick={onNew}
-          className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transition-colors"
+          className="btn-glow px-8 py-3 rounded-xl font-bold shadow-lg"
         >
-          Start Your First Decision
+          Start First Decision
         </button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Your Decision History</h2>
-        <button 
-           onClick={onNew}
-           className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
-        >
-          + New Decision
-        </button>
+    <div className="max-w-3xl mx-auto animate-fade-in">
+      <div className="flex justify-between items-center mb-8 px-2">
+        <h2 className="text-3xl font-black text-slate-900 dark:text-white">History</h2>
+        <span className="text-sm font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+            {history.length} Records
+        </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid gap-4">
         {history.map((record) => (
           <div 
             key={record.id} 
             onClick={() => onSelect(record)}
-            className="group bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer flex justify-between items-center p-5"
+            className="group glass-card glass-card-hover rounded-2xl p-6 cursor-pointer relative overflow-hidden transition-all"
           >
-             <div className="flex-1">
-                <h3 className="font-bold text-slate-800 dark:text-white group-hover:text-indigo-700 dark:group-hover:text-indigo-300 mb-1">{record.title}</h3>
-                <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                   <span className="flex items-center gap-1">
-                      <Calendar size={12} />
-                      {new Date(record.createdAt).toLocaleDateString()}
-                   </span>
-                   <span>{record.input.options.length} Options</span>
+             {/* Hover Accent */}
+             <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+             <div className="flex justify-between items-center gap-4">
+                <div className="flex-1 overflow-hidden">
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-2 line-clamp-1 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                        {record.title}
+                    </h3>
+                    <div className="flex items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/50 px-2 py-1 rounded-md">
+                            <Calendar size={12} />
+                            {new Date(record.createdAt).toLocaleDateString()}
+                        </span>
+                        <span>
+                            {Array.isArray(record.input.options) ? record.input.options.length : 0} Options Analyzed
+                        </span>
+                    </div>
                 </div>
-             </div>
-             
-             <div className="flex items-center gap-3">
-               <button 
-                 onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}
-                 className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors z-10"
-                 title="Delete"
-               >
-                 <Trash2 size={18} />
-               </button>
-               <div className="text-slate-300 group-hover:text-indigo-400 dark:group-hover:text-indigo-500">
-                  <ChevronRight />
-               </div>
+                
+                <div className="flex items-center gap-4 flex-shrink-0">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}
+                        className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0"
+                        title="Delete"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                    <div className="w-12 h-12 rounded-full bg-purple-50 dark:bg-slate-800 border-2 border-transparent group-hover:border-purple-200 dark:group-hover:border-purple-900/50 flex items-center justify-center text-purple-400 group-hover:text-purple-600 dark:group-hover:text-purple-300 group-hover:bg-white dark:group-hover:bg-slate-800 transition-all shadow-sm group-hover:shadow-md">
+                        <ChevronRight size={24} strokeWidth={3} />
+                    </div>
+                </div>
              </div>
           </div>
         ))}

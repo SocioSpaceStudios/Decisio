@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { DecisionInput, Criterion } from '../types';
-import { Plus, Trash2, Loader2, Sparkles } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { DecisionInput, Criterion, OptionItem } from '../types';
+import { Plus, Trash2, Loader2, Sparkles, Image as ImageIcon, FileText, Music, Type, ArrowRight, ArrowLeft } from 'lucide-react';
 import { getDecisionSuggestion, getOptionsSuggestion, getCriteriaSuggestion } from '../services/geminiService';
 
 interface DecisionFormProps {
@@ -9,19 +9,106 @@ interface DecisionFormProps {
   displayName?: string;
 }
 
+type ComparisonMode = 'text' | 'image' | 'file' | 'audio';
+type Step = 1 | 2 | 3;
+
 const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displayName }) => {
+  const [step, setStep] = useState<Step>(1);
   const [question, setQuestion] = useState('');
-  const [optionsText, setOptionsText] = useState('');
   
-  // Loading states for individual AI assists
+  const [options, setOptions] = useState<OptionItem[]>([
+    { id: '1', type: 'text', text: '' },
+    { id: '2', type: 'text', text: '' },
+    { id: '3', type: 'text', text: '' },
+  ]);
+
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('text');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [criteria, setCriteria] = useState<Criterion[]>([
+    { id: '1', name: '', weight: 3 }
+  ]);
+
   const [isSuggestingDecision, setIsSuggestingDecision] = useState(false);
   const [isSuggestingOptions, setIsSuggestingOptions] = useState(false);
   const [isSuggestingCriteria, setIsSuggestingCriteria] = useState(false);
 
-  // Criteria state management
-  const [criteria, setCriteria] = useState<Criterion[]>([
-    { id: '1', name: '', weight: 3 }
-  ]);
+  const isQuestionValid = question.trim().length > 3;
+  const validOptionsCount = options.filter(o => (o.text.trim().length > 0 || o.fileData)).length;
+  const isOptionsValid = validOptionsCount >= 2;
+
+  const nextStep = () => {
+    if (step === 1 && isQuestionValid) setStep(2);
+    else if (step === 2 && isOptionsValid) {
+        if (criteria.length === 1 && !criteria[0].name) suggestCriteria();
+        setStep(3);
+    }
+  };
+
+  const prevStep = () => {
+    if (step > 1) setStep((s) => (s - 1) as Step);
+  };
+
+  const handleModeChange = (mode: ComparisonMode) => {
+    const hasLockedData = options.some(o => (o.type === 'text' && o.text.trim()) || o.fileData);
+    if (hasLockedData && mode !== comparisonMode) {
+        if (!confirm("Changing input type will clear your current options. Continue?")) return;
+    }
+    setComparisonMode(mode);
+    if (mode === 'text') {
+        setOptions([
+            { id: Date.now().toString() + '1', type: 'text', text: '' },
+            { id: Date.now().toString() + '2', type: 'text', text: '' },
+            { id: Date.now().toString() + '3', type: 'text', text: '' },
+        ]);
+    } else {
+        setOptions([]);
+    }
+  };
+
+  const handleOptionChange = (id: string, text: string) => {
+    setOptions(prev => prev.map(o => o.id === id ? { ...o, text } : o));
+  };
+
+  const handleAddTextOption = () => {
+    setOptions([...options, { id: Date.now().toString(), type: 'text', text: '' }]);
+  };
+
+  const triggerFileUpload = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleRemoveOption = (id: string) => {
+    if (comparisonMode === 'text' && options.length <= 2) {
+       setOptions(prev => prev.map(o => o.id === id ? { ...o, text: '' } : o));
+    } else {
+       setOptions(prev => prev.filter(o => o.id !== id));
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const base64Data = base64String.split(',')[1];
+        setOptions(prev => [
+            ...prev,
+            {
+                id: Date.now().toString(),
+                type: comparisonMode,
+                text: file.name,
+                fileName: file.name,
+                mimeType: file.type,
+                fileData: base64Data
+            }
+        ]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const handleAddCriterion = () => {
     setCriteria([...criteria, { id: Date.now().toString(), name: '', weight: 3 }]);
@@ -35,29 +122,30 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
     setCriteria(criteria.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
-  // AI Suggestion Handlers
   const suggestDecision = async () => {
     setIsSuggestingDecision(true);
     try {
       const suggestion = await getDecisionSuggestion(question);
       if (suggestion) setQuestion(suggestion);
-    } catch (e) {
-      console.error(e);
     } finally {
       setIsSuggestingDecision(false);
     }
   };
 
   const suggestOptions = async () => {
-    if (!question.trim()) return;
+    if (!question.trim() || comparisonMode !== 'text') return;
     setIsSuggestingOptions(true);
     try {
       const suggestions = await getOptionsSuggestion(question);
       if (suggestions && suggestions.length > 0) {
-        setOptionsText(suggestions.join('\n'));
+        const newOptions = [...options];
+        suggestions.forEach(suggestion => {
+            const emptyIndex = newOptions.findIndex(o => o.type === 'text' && !o.text.trim());
+            if (emptyIndex !== -1) newOptions[emptyIndex].text = suggestion;
+            else newOptions.push({ id: Date.now().toString() + Math.random(), type: 'text', text: suggestion });
+        });
+        setOptions(newOptions);
       }
-    } catch (e) {
-      console.error(e);
     } finally {
       setIsSuggestingOptions(false);
     }
@@ -69,206 +157,292 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
     try {
       const suggestions = await getCriteriaSuggestion(question);
       if (suggestions && suggestions.length > 0) {
-        const newCriteria = suggestions.map((s, idx) => ({
+        setCriteria(suggestions.map((s, idx) => ({
           id: Date.now().toString() + idx,
           name: s.name,
           weight: s.weight
-        }));
-        setCriteria(newCriteria);
+        })));
       }
-    } catch (e) {
-      console.error(e);
     } finally {
       setIsSuggestingCriteria(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const options = optionsText.split('\n').map(o => o.trim()).filter(o => o.length > 0);
+  const handleSubmit = () => {
+    const validOptions = options.filter(o => o.text.trim().length > 0 || o.fileData);
     const validCriteria = criteria.filter(c => c.name.trim().length > 0);
-
-    if (!question.trim()) return alert("Please enter a decision question.");
-    if (options.length < 2) return alert("Please enter at least two options to compare.");
     
     onSubmit({
       question,
-      options,
+      options: validOptions,
       criteria: validCriteria.length > 0 ? validCriteria : [{ id: 'default', name: 'General Benefit', weight: 3 }]
     });
   };
 
-  // Shared style for active AI buttons to give them a glow
-  const activeAiBtnStyle = "text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 border-purple-200 dark:border-purple-700 shadow-[0_0_10px_rgba(168,85,247,0.25)] hover:shadow-[0_0_15px_rgba(168,85,247,0.4)]";
-  const disabledAiBtnStyle = "text-slate-400 dark:text-slate-600 bg-slate-100 dark:bg-slate-800 border-transparent cursor-not-allowed";
-
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 sm:p-8 border border-slate-100 dark:border-slate-700 transition-colors">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
-          {displayName ? `Welcome, ${displayName}` : 'New Decision'}
-        </h2>
+    <div className="max-w-3xl mx-auto">
+        {/* Progress Pills */}
+        <div className="flex justify-center mb-8 gap-2">
+            {[1, 2, 3].map(s => (
+                <div 
+                    key={s} 
+                    className={`h-1.5 rounded-full transition-all duration-500 ${step >= s ? 'w-12 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'w-4 bg-slate-300 dark:bg-slate-700'}`}
+                />
+            ))}
+        </div>
+
+      <div className="glass-card rounded-[2rem] p-8 sm:p-12 min-h-[500px] flex flex-col relative overflow-hidden">
         
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Question */}
-          <div>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                What decision are you trying to make?
-              </label>
-              <button
-                type="button"
-                onClick={suggestDecision}
-                disabled={isSuggestingDecision}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full flex items-center self-start sm:self-auto transition-all border ${activeAiBtnStyle}`}
-              >
-                {isSuggestingDecision ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin mr-1"/>
-                    {question.trim() ? "Refining..." : "Thinking..."}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={12} className="mr-1 text-purple-600 dark:text-purple-400"/>
-                    {question.trim() ? "Enhance" : "Decide for me"}
-                  </>
-                )}
-              </button>
-            </div>
-            <input
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g., Should I accept the job offer in New York?"
-              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none placeholder-slate-400 dark:placeholder-slate-500"
-              required
-            />
-          </div>
-
-          {/* Options */}
-          <div>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-               <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                 List the options (one per line)
-               </label>
-               <button
-                  type="button"
-                  onClick={suggestOptions}
-                  disabled={!question.trim() || isSuggestingOptions}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-full flex items-center self-start sm:self-auto transition-all border ${!question.trim() ? disabledAiBtnStyle : activeAiBtnStyle}`}
-                  title={!question.trim() ? "Fill in the decision first" : "Generate options"}
-                >
-                  {isSuggestingOptions ? (
-                    <>
-                      <Loader2 size={12} className="animate-spin mr-1"/>
-                      Brainstorming...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={12} className="mr-1 text-purple-600 dark:text-purple-400"/>
-                      Suggest Options
-                    </>
-                  )}
-                </button>
-            </div>
-            <textarea
-              value={optionsText}
-              onChange={(e) => setOptionsText(e.target.value)}
-              placeholder={"Stay at current job\nAccept New York offer\nNegotiate for remote work"}
-              className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] placeholder-slate-400 dark:placeholder-slate-500"
-              required
-            />
-          </div>
-
-          {/* Criteria */}
-          <div>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                What matters most? (Criteria)
-              </label>
-              <div className="flex gap-2 self-start sm:self-auto">
-                <button
-                    type="button"
-                    onClick={suggestCriteria}
-                    disabled={!question.trim() || isSuggestingCriteria}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-full flex items-center transition-all border ${!question.trim() ? disabledAiBtnStyle : activeAiBtnStyle}`}
-                    title={!question.trim() ? "Fill in the decision first" : "Generate criteria"}
-                  >
-                    {isSuggestingCriteria ? (
-                      <>
-                        <Loader2 size={12} className="animate-spin mr-1"/>
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={12} className="mr-1 text-purple-600 dark:text-purple-400"/>
-                        Suggest Criteria
-                      </>
-                    )}
-                  </button>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              {criteria.map((criterion) => (
-                <div key={criterion.id} className="flex gap-2 sm:gap-3 items-center">
-                  <input
-                    type="text"
-                    value={criterion.name}
-                    onChange={(e) => handleCriterionChange(criterion.id, 'name', e.target.value)}
-                    placeholder="e.g., Salary, Work-life balance"
-                    className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm placeholder-slate-400 dark:placeholder-slate-500"
-                  />
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 flex-shrink-0">
-                    <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Importance</span>
-                    <select
-                      value={criterion.weight}
-                      onChange={(e) => handleCriterionChange(criterion.id, 'weight', parseInt(e.target.value))}
-                      className="bg-transparent text-sm font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
-                    >
-                      {[1, 2, 3, 4, 5].map(w => (
-                        <option key={w} value={w} className="text-slate-900">{w}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {criteria.length > 0 && (
+        {/* Step 1: Question */}
+        {step === 1 && (
+            <div className="flex-1 flex flex-col animate-fade-in">
+                <div className="flex justify-between items-center mb-8">
+                    <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 01</span>
                     <button
-                      type="button"
-                      onClick={() => handleRemoveCriterion(criterion.id)}
-                      className="p-1 sm:p-0 text-slate-400 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
+                        type="button"
+                        onClick={suggestDecision}
+                        disabled={isSuggestingDecision}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
                     >
-                      <Trash2 size={18} />
+                        {isSuggestingDecision ? (
+                           <>
+                             <Loader2 size={12} className="animate-spin mr-1"/> Drafting...
+                           </>
+                        ) : (
+                           <>
+                             <Sparkles size={12} className="mr-1"/> AI Assist
+                           </>
+                        )}
                     </button>
-                  )}
                 </div>
-              ))}
-              
-              <button
-                type="button"
-                onClick={handleAddCriterion}
-                className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center mt-2"
-              >
-                <Plus size={16} className="mr-1" /> Add Manually
-              </button>
-            </div>
-          </div>
+                
+                <h2 className="text-4xl font-black mb-6 text-slate-900 dark:text-white leading-tight">
+                    What's on your mind?
+                </h2>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:bg-indigo-400 dark:disabled:bg-indigo-800 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 transition-all transform hover:-translate-y-0.5 flex justify-center items-center gap-2 mt-4"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="animate-spin" /> Analyzing...
-              </>
+                <div className="flex-1 flex flex-col">
+                    <textarea
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder="e.g. Should I accept the job offer in New York or stay in London?"
+                        className="w-full flex-1 p-6 text-2xl font-medium rounded-2xl input-sleek resize-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
+                        autoFocus
+                        spellCheck={true}
+                        lang="en"
+                    />
+                </div>
+            </div>
+        )}
+
+        {/* Step 2: Options */}
+        {step === 2 && (
+            <div className="flex-1 flex flex-col animate-fade-in">
+                 <div className="flex justify-between items-center mb-6">
+                     <div>
+                        <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 02</span>
+                        <h2 className="text-3xl font-black text-slate-900 dark:text-white">Your Options</h2>
+                     </div>
+                     <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] uppercase font-bold text-slate-400">Input Type</span>
+                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                            {(['text', 'image', 'file', 'audio'] as ComparisonMode[]).map(mode => (
+                                <button
+                                    key={mode}
+                                    onClick={() => handleModeChange(mode)}
+                                    className={`p-2 rounded-lg transition-all ${comparisonMode === mode ? 'bg-white dark:bg-slate-600 shadow-sm text-purple-600 dark:text-white' : 'text-slate-400 hover:text-purple-500'}`}
+                                    title={mode}
+                                >
+                                    {mode === 'text' && <Type size={18}/>}
+                                    {mode === 'image' && <ImageIcon size={18}/>}
+                                    {mode === 'file' && <FileText size={18}/>}
+                                    {mode === 'audio' && <Music size={18}/>}
+                                </button>
+                            ))}
+                        </div>
+                     </div>
+                 </div>
+                 
+                 <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    accept={comparisonMode === 'image' ? "image/*" : comparisonMode === 'audio' ? "audio/*" : ".pdf,.txt,.doc,.docx"}
+                    onChange={handleFileSelect}
+                />
+
+                 <div className="space-y-4 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
+                    {options.map((option, index) => (
+                        <div key={option.id} className="flex gap-3 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
+                            <div className="flex-1">
+                                {comparisonMode === 'text' ? (
+                                    <input
+                                        type="text"
+                                        value={option.text}
+                                        onChange={(e) => handleOptionChange(option.id, e.target.value)}
+                                        placeholder={`Option ${index + 1}`}
+                                        className="w-full px-5 py-4 rounded-xl input-sleek text-lg font-medium"
+                                        autoFocus={index === options.length - 1 && options.length > 2}
+                                        spellCheck={true}
+                                        lang="en"
+                                    />
+                                ) : (
+                                    <div className="flex items-center gap-4 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                        <div className="w-12 h-12 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-purple-500 shadow-sm overflow-hidden flex-shrink-0">
+                                            {option.type === 'image' && option.fileData ? (
+                                                <img src={`data:${option.mimeType};base64,${option.fileData}`} alt="Preview" className="w-full h-full object-cover" />
+                                            ) : option.type === 'audio' ? <Music size={24} /> : <FileText size={24} />}
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={option.text}
+                                            onChange={(e) => handleOptionChange(option.id, e.target.value)}
+                                            placeholder="Label this..."
+                                            className="flex-1 bg-transparent border-none outline-none font-medium text-lg"
+                                            spellCheck={true}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            <button onClick={() => handleRemoveOption(option.id)} className="p-3 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <Trash2 size={20} />
+                            </button>
+                        </div>
+                    ))}
+                    
+                    {comparisonMode !== 'text' && options.length === 0 && (
+                         <div onClick={triggerFileUpload} className="cursor-pointer border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-10 flex flex-col items-center justify-center text-slate-400 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all">
+                             <Plus size={32} className="mb-2"/>
+                             <span className="font-semibold">Upload {comparisonMode}s</span>
+                         </div>
+                    )}
+                 </div>
+
+                 <div className="flex justify-between items-center mt-6">
+                     <button
+                        onClick={comparisonMode === 'text' ? handleAddTextOption : triggerFileUpload}
+                        className="text-purple-600 dark:text-purple-400 font-bold flex items-center gap-2 px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                    >
+                        <Plus size={20} /> Add Option
+                    </button>
+                    
+                    {comparisonMode === 'text' && (
+                        <button
+                            onClick={suggestOptions}
+                            disabled={isSuggestingOptions}
+                            className="text-sm font-bold text-slate-500 hover:text-purple-600 flex items-center gap-2 transition-colors"
+                        >
+                            {isSuggestingOptions ? (
+                                <>
+                                    <Loader2 size={16} className="animate-spin"/> Brainstorming...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles size={16}/> Brainstorm
+                                </>
+                            )}
+                        </button>
+                    )}
+                 </div>
+            </div>
+        )}
+
+        {/* Step 3: Criteria */}
+        {step === 3 && (
+            <div className="flex-1 flex flex-col animate-fade-in">
+                <div className="flex justify-between items-center mb-6">
+                     <div>
+                        <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 03</span>
+                        <h2 className="text-3xl font-black text-slate-900 dark:text-white">Success Criteria</h2>
+                     </div>
+                    <button
+                        onClick={suggestCriteria}
+                        disabled={isSuggestingCriteria}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                    >
+                        {isSuggestingCriteria ? (
+                            <>
+                                <Loader2 size={12} className="animate-spin mr-1"/> Generating...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={12} className="mr-1"/> Auto-Generate
+                            </>
+                        )}
+                    </button>
+                </div>
+
+                <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
+                    {criteria.map((criterion, index) => (
+                        <div key={criterion.id} className="flex gap-3 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
+                             <div className="flex-1 flex items-center input-sleek rounded-xl p-2 pl-4 focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-purple-500">
+                                 <input
+                                    type="text"
+                                    value={criterion.name}
+                                    onChange={(e) => handleCriterionChange(criterion.id, 'name', e.target.value)}
+                                    placeholder="e.g. Cost, Time, Effort"
+                                    className="flex-1 bg-transparent outline-none font-bold text-lg"
+                                    spellCheck={true}
+                                    lang="en"
+                                />
+                                <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-2"></div>
+                                <select
+                                    value={criterion.weight}
+                                    onChange={(e) => handleCriterionChange(criterion.id, 'weight', parseInt(e.target.value))}
+                                    className="bg-transparent text-sm font-bold text-purple-600 dark:text-purple-400 outline-none cursor-pointer pr-2"
+                                >
+                                    {[1, 2, 3, 4, 5].map(w => <option key={w} value={w}>Imp: {w}</option>)}
+                                </select>
+                             </div>
+                             {criteria.length > 1 && (
+                                <button onClick={() => handleRemoveCriterion(criterion.id)} className="p-3 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                    <Trash2 size={20} />
+                                </button>
+                             )}
+                        </div>
+                    ))}
+                    
+                    <button
+                        onClick={handleAddCriterion}
+                        className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-purple-600 hover:border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/10 font-bold flex justify-center items-center gap-2 transition-all mt-4"
+                    >
+                        <Plus size={20} /> Add Criterion
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* Navigation Footer */}
+        <div className="mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+            {step > 1 ? (
+                <button 
+                    onClick={prevStep}
+                    className="flex items-center gap-2 text-slate-500 hover:text-purple-600 dark:text-slate-400 dark:hover:text-purple-300 font-bold px-4 py-2 rounded-lg transition-colors"
+                >
+                    <ArrowLeft size={18} /> Back
+                </button>
             ) : (
-              <span className="text-xl">Analyze</span>
+                <div></div> 
             )}
-          </button>
-        </form>
+
+            {step < 3 ? (
+                <button
+                    onClick={nextStep}
+                    disabled={(step === 1 && !isQuestionValid) || (step === 2 && !isOptionsValid)}
+                    className="btn-glow px-10 py-4 rounded-2xl font-bold shadow-lg flex items-center gap-2"
+                >
+                    Next Step <ArrowRight size={20} />
+                </button>
+            ) : (
+                <button
+                    onClick={handleSubmit}
+                    disabled={isLoading}
+                    className="btn-glow px-10 py-4 rounded-2xl font-bold shadow-lg flex items-center gap-2"
+                >
+                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
+                    {isLoading ? "Thinking..." : "Analyze"}
+                </button>
+            )}
+        </div>
       </div>
     </div>
   );

@@ -4,9 +4,18 @@ export interface Criterion {
   weight: number; // 1-5
 }
 
+export interface OptionItem {
+  id: string;
+  type: 'text' | 'image' | 'file' | 'audio';
+  text: string; // The name or label of the option
+  fileData?: string; // Base64 string
+  mimeType?: string;
+  fileName?: string;
+}
+
 export interface DecisionInput {
   question: string;
-  options: string[];
+  options: OptionItem[]; 
   criteria: Criterion[];
 }
 
@@ -21,6 +30,7 @@ export interface AnalysisOption {
 export interface AnalysisResult {
   safetyWarning?: string | null;
   summary: string;
+  changesFromPrevious?: string[]; // New field for highlighting changes
   criteriaAnalysis: { name: string; explanation: string; weight: number }[];
   optionsAnalysis: AnalysisOption[];
   recommendation: {
@@ -30,12 +40,19 @@ export interface AnalysisResult {
   reflectionQuestions: string[];
 }
 
+export interface HistoryItem {
+    analysis: AnalysisResult;
+    instruction?: string;
+    timestamp: number;
+}
+
 export interface DecisionRecord {
   id: string;
   title: string;
   input: DecisionInput;
-  analysis: AnalysisResult;
+  analysis: AnalysisResult; // The *latest* analysis
   createdAt: number;
+  refinementHistory?: HistoryItem[]; // Past versions
 }
 
 export interface UserSettings {

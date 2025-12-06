@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewState, DecisionInput, AnalysisResult, DecisionRecord, UserSettings } from './types';
+import { ViewState, DecisionInput, DecisionRecord, UserSettings } from './types';
 import { analyzeDecision, refineAnalysis } from './services/geminiService';
 import DecisionForm from './components/DecisionForm';
 import DecisionResult from './components/DecisionResult';
@@ -13,7 +13,6 @@ const SETTINGS_KEY = 'clarity_choice_settings';
 const ONBOARDED_KEY = 'clarity_choice_onboarded';
 
 const App: React.FC = () => {
-  // Initialize view state. If not onboarded, default to ONBOARDING.
   const [view, setView] = useState<ViewState>(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem(ONBOARDED_KEY)) {
       return 'ONBOARDING';
@@ -25,7 +24,6 @@ const App: React.FC = () => {
   const [currentRecord, setCurrentRecord] = useState<DecisionRecord | null>(null);
   const [history, setHistory] = useState<DecisionRecord[]>([]);
   
-  // Settings State - lazy init to avoid flash of default settings
   const [userSettings, setUserSettings] = useState<UserSettings>(() => {
     const savedSettings = localStorage.getItem(SETTINGS_KEY);
     return savedSettings ? JSON.parse(savedSettings) : {
@@ -34,7 +32,6 @@ const App: React.FC = () => {
     };
   });
 
-  // Load history on mount
   useEffect(() => {
     try {
       const savedHistory = localStorage.getItem(STORAGE_KEY);
@@ -46,29 +43,19 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Theme Application Effect
   useEffect(() => {
     const root = window.document.documentElement;
-    
     const applyTheme = () => {
       const isDark = userSettings.theme === 'dark' || 
         (userSettings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      
-      if (isDark) {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
+      if (isDark) root.classList.add('dark');
+      else root.classList.remove('dark');
     };
-
     applyTheme();
-
-    // Listen for system changes if theme is 'system'
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleSystemChange = () => {
       if (userSettings.theme === 'system') applyTheme();
     };
-
     mediaQuery.addEventListener('change', handleSystemChange);
     return () => mediaQuery.removeEventListener('change', handleSystemChange);
   }, [userSettings.theme]);
@@ -84,27 +71,38 @@ const App: React.FC = () => {
   };
 
   const clearHistory = () => {
-    if (window.confirm("Are you sure you want to delete all your decision history? This cannot be undone.")) {
+    if (window.confirm("Are you sure you want to delete all your decision history?")) {
       setHistory([]);
       localStorage.removeItem(STORAGE_KEY);
     }
   };
 
+  const handleSave = (record: DecisionRecord) => {
+    const exists = history.some(h => h.id === record.id);
+    let newHistory;
+    if (exists) {
+        newHistory = history.map(h => h.id === record.id ? record : h);
+    } else {
+        newHistory = [record, ...history];
+    }
+    setHistory(newHistory);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+  };
+
   const handleAnalyze = async (input: DecisionInput) => {
     setIsLoading(true);
     try {
-      // Pass the display name to the service
       const analysis = await analyzeDecision(input, userSettings.displayName);
-      
       const newRecord: DecisionRecord = {
         id: Date.now().toString(),
         title: input.question,
         input,
         analysis,
         createdAt: Date.now(),
+        refinementHistory: [] 
       };
-
       setCurrentRecord(newRecord);
+      handleSave(newRecord);
       setView('ANALYSIS');
     } catch (error) {
       alert("Something went wrong with the analysis. Please check your network and try again.");
@@ -115,53 +113,52 @@ const App: React.FC = () => {
 
   const handleRefine = async (instruction: string) => {
     if (!currentRecord) return;
-    
     try {
       const refinedAnalysis = await refineAnalysis(currentRecord.input, currentRecord.analysis, instruction);
       
-      const updatedRecord: DecisionRecord = {
-        ...currentRecord,
-        analysis: refinedAnalysis,
+      const updatedRecord: DecisionRecord = { 
+        ...currentRecord, 
+        // Save the current analysis state to history before replacing it
+        refinementHistory: [
+            ...(currentRecord.refinementHistory || []),
+            {
+                analysis: currentRecord.analysis,
+                instruction: instruction,
+                timestamp: Date.now()
+            }
+        ],
+        analysis: refinedAnalysis 
       };
-      
+
       setCurrentRecord(updatedRecord);
-      
-      if (history.some(h => h.id === updatedRecord.id)) {
-        handleSave(updatedRecord);
-      }
+      handleSave(updatedRecord);
     } catch (error) {
       console.error("Refinement failed", error);
       throw error; 
     }
   };
 
-  const handleSave = (record: DecisionRecord) => {
-    const exists = history.some(h => h.id === record.id);
-    let newHistory;
-    
-    if (exists) {
-        newHistory = history.map(h => h.id === record.id ? record : h);
-    } else {
-        newHistory = [record, ...history];
-    }
-    
-    setHistory(newHistory);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
-  };
-
   const handleDelete = (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this decision?")) return;
+    if (!window.confirm("Delete this decision?")) return;
     const newHistory = history.filter(h => h.id !== id);
     setHistory(newHistory);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+    if (currentRecord && currentRecord.id === id) {
+        setCurrentRecord(null);
+        setView('HOME');
+    }
   };
 
-  const isCurrentSaved = currentRecord ? history.some(h => h.id === currentRecord.id) : false;
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 pb-10">
+    <div className="min-h-screen text-slate-900 dark:text-slate-100 pb-20 relative overflow-x-hidden font-sans selection:bg-purple-200 dark:selection:bg-purple-900">
       
-      {/* Onboarding View */}
+      {/* Animated Aurora Background */}
+      <div className="bg-aurora"></div>
+      
+      {/* Noise Texture */}
+      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none z-0 mix-blend-overlay"></div>
+      
+      {/* Onboarding Overlay */}
       {view === 'ONBOARDING' && (
         <Onboarding 
           settings={userSettings}
@@ -170,39 +167,41 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Navigation Bar - Hidden during onboarding */}
+      {/* Floating Glass Navigation */}
       {view !== 'ONBOARDING' && (
-        <nav className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 transition-colors">
-          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div 
-              className="flex items-center gap-2 cursor-pointer"
-              onClick={() => { setView('HOME'); setCurrentRecord(null); }}
-            >
-              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm">
-                <BrainCircuit size={20} />
-              </div>
-              <span className="font-bold text-lg tracking-tight text-slate-800 dark:text-white">Decisio</span>
-            </div>
-            
-            <div className="flex items-center gap-1">
-              <button 
+        <nav className="fixed top-6 left-0 right-0 z-40 px-4 pointer-events-none">
+          <div className="max-w-4xl mx-auto pointer-events-auto">
+            <div className="glass-card rounded-full px-4 py-3 flex items-center justify-between shadow-lg">
+              <div 
+                className="flex items-center gap-3 cursor-pointer group pl-2"
                 onClick={() => { setView('HOME'); setCurrentRecord(null); }}
-                className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${view === 'HOME' ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               >
-                <PlusCircle size={18} /> <span className="hidden sm:inline">New</span>
-              </button>
-              <button 
-                onClick={() => setView('HISTORY')}
-                className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${view === 'HISTORY' ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-              >
-                <HistoryIcon size={18} /> <span className="hidden sm:inline">History</span>
-              </button>
-              <button 
-                onClick={() => setView('SETTINGS')}
-                className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${view === 'SETTINGS' ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-              >
-                <SettingsIcon size={18} /> <span className="hidden sm:inline">Settings</span>
-              </button>
+                <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-md transform transition-transform group-hover:rotate-12">
+                  <BrainCircuit size={20} />
+                </div>
+                <span className="font-extrabold text-xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300">Decisio</span>
+              </div>
+              
+              <div className="flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-full">
+                <button 
+                  onClick={() => { setView('HOME'); setCurrentRecord(null); }}
+                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'HOME' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  <PlusCircle size={18} /> <span className="hidden sm:inline">New</span>
+                </button>
+                <button 
+                  onClick={() => setView('HISTORY')}
+                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'HISTORY' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  <HistoryIcon size={18} /> <span className="hidden sm:inline">History</span>
+                </button>
+                <button 
+                  onClick={() => setView('SETTINGS')}
+                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'SETTINGS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                >
+                  <SettingsIcon size={18} /> 
+                </button>
+              </div>
             </div>
           </div>
         </nav>
@@ -210,15 +209,17 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       {view !== 'ONBOARDING' && (
-        <main className="max-w-5xl mx-auto px-4 pt-8">
+        <main className="max-w-3xl mx-auto px-4 pt-32 relative z-10">
           {view === 'HOME' && (
             <div className="animate-fade-in-up">
-              <div className="text-center mb-10">
-                <h1 className="text-4xl font-bold text-slate-800 dark:text-white mb-4">
-                  Make Better Decisions
-                </h1>
-                <p className="text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
-                  Define your dilemma, list your options, and let AI analyze the pros, cons, and trade-offs to help you decide with confidence.
+              <div className="text-center mb-12">
+                <div className="inline-block animate-float">
+                    <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-gradient leading-tight filter drop-shadow-sm">
+                    Decide Better.
+                    </h1>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 max-w-lg mx-auto text-lg leading-relaxed font-medium opacity-90">
+                  Navigate complexity with AI-powered clarity. Weigh your options, define your criteria, and choose with confidence.
                 </p>
               </div>
               <DecisionForm 
@@ -233,10 +234,9 @@ const App: React.FC = () => {
             <div className="animate-fade-in">
               <DecisionResult 
                 record={currentRecord} 
-                onSave={handleSave}
-                onRefine={handleRefine}
-                isSaved={isCurrentSaved}
+                onDelete={() => handleDelete(currentRecord.id)}
                 onNew={() => { setView('HOME'); setCurrentRecord(null); }}
+                onRefine={handleRefine}
               />
             </div>
           )}

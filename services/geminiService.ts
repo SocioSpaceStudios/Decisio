@@ -1,5 +1,5 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
-import { DecisionInput, AnalysisResult } from "../types";
+import { DecisionInput, AnalysisResult, OptionItem } from "../types";
 
 const apiKey = process.env.API_KEY;
 const ai = new GoogleGenAI({ apiKey });
@@ -15,6 +15,12 @@ const analysisSchema: Schema = {
     summary: {
       type: Type.STRING,
       description: "Clarify the decision in one sentence.",
+    },
+    changesFromPrevious: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "If this is a refinement, list 1-3 bullet points explaining exactly what changed compared to the previous version (e.g., 'Increased weight of Cost', 'Added option X'). If it is the first analysis, return an empty array.",
+      nullable: true
     },
     criteriaAnalysis: {
       type: Type.ARRAY,
@@ -66,7 +72,7 @@ const analysisSchema: Schema = {
       description: "Questions to help the user reflect.",
     },
   },
-  required: ["summary", "criteriaAnalysis", "optionsAnalysis", "recommendation", "reflectionQuestions"],
+  required: ["summary", "changesFromPrevious", "criteriaAnalysis", "optionsAnalysis", "recommendation", "reflectionQuestions"],
 };
 
 export const analyzeDecision = async (input: DecisionInput, userName?: string): Promise<AnalysisResult> => {
@@ -74,17 +80,51 @@ export const analyzeDecision = async (input: DecisionInput, userName?: string): 
   
   const userContext = userName ? `The user's name is ${userName}. Address them personally in the recommendation and reflection sections where appropriate.` : "";
 
-  const prompt = `
+  // Construct the prompt with multimodal parts
+  const parts: any[] = [];
+
+  parts.push({
+    text: `
     You are an assistant that helps people make thoughtful, grounded decisions.
     ${userContext}
-    The user will share a decision, options they are considering, and criteria that matter to them.
+    The user will share a decision, options (which may include images, audio, or files), and criteria that matter to them.
     
+    Decision Question: "${input.question}"
+    
+    Criteria: 
+    ${input.criteria.map((c) => `- ${c.name} (Weight: ${c.weight})`).join("\n")}
+
+    Here are the Options provided by the user:
+    `
+  });
+
+  // Iterate through options and add them as parts
+  input.options.forEach((opt, index) => {
+    // 1. Label the option
+    parts.push({
+      text: `\nOption ${index + 1}: ${opt.text || "Untitled Option"}\n`
+    });
+
+    // 2. Add media if present
+    if (opt.fileData && opt.mimeType) {
+      parts.push({
+        inlineData: {
+          mimeType: opt.mimeType,
+          data: opt.fileData
+        }
+      });
+    }
+  });
+
+  parts.push({
+    text: `
     Your job is to:
     
-    1. Clarify the decision in one sentence.
+    1. **Clarify and Correct:** Clarify the decision in one sentence. **IMPORTANT**: If the user has made spelling errors in the question, option names, or criteria, you MUST use the CORRECTED spelling in your output (summary, option names, criteria names). Do not repeat typos.
     2. **Ensure there are AT LEAST 4 options analyzed.**
        - If the user provided fewer than 4 options, you MUST generate distinct, realistic, and creative additional options to reach a total of 4.
        - For these AI-generated options, prefix the name with "[Suggestion] ".
+       - If the user provided images/files, analyze them visually/audibly to inform the pros/cons.
     3. Evaluate each option against each criterion using the user’s priorities.
     4. Generate pros and cons for ALL options.
     5. Score the options:
@@ -93,28 +133,17 @@ export const analyzeDecision = async (input: DecisionInput, userName?: string): 
     6. Give a recommendation with a calm explanation, but ALWAYS remind the user that they are responsible for the final choice.
     
     Safety rules:
+    If the decision involves self-harm, suicide, harming others, or emergencies, do not give normal decision advice. Return a JSON with ONLY the 'safetyWarning' field populated.
+    Do not give medical, legal, or financial advice.
     
-    If the decision involves self-harm, suicide, harming others, or emergencies, do not give normal decision advice. Urge them to seek immediate help from local emergency services or crisis hotlines. Return a JSON with ONLY the 'safetyWarning' field populated with this advice.
-    
-    Do not give medical, legal, or financial advice. You may discuss general factors to consider, but you must encourage the user to consult a qualified professional.
-    
-    Here is the user input:
-    
-    Decision: "${input.question}"
-    
-    Options: 
-    ${input.options.map((o) => `- ${o}`).join("\n")}
-    
-    Criteria (with weights 1–5 if available): 
-    ${input.criteria.map((c) => `- ${c.name} (Weight: ${c.weight})`).join("\n")}
-    
-    Follow the JSON schema provided for the output.
-  `;
+    Follow the JSON schema provided for the output. For 'changesFromPrevious', return an empty array since this is the first analysis.
+    `
+  });
 
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: prompt,
+      contents: { parts }, // Pass the array of parts
       config: {
         responseMimeType: "application/json",
         responseSchema: analysisSchema,
@@ -136,12 +165,15 @@ export const analyzeDecision = async (input: DecisionInput, userName?: string): 
 export const refineAnalysis = async (input: DecisionInput, currentAnalysis: AnalysisResult, refinementInstruction: string): Promise<AnalysisResult> => {
   const model = "gemini-2.5-flash";
 
+  // Simplified refinement for now (text-based context recall)
+  const optionsDesc = input.options.map(o => o.text).join(", ");
+
   const prompt = `
     You are refining a previous decision analysis based on user feedback.
     
     Original Context:
     Decision: "${input.question}"
-    Original Options: ${input.options.join(", ")}
+    Original Options (Names): ${optionsDesc}
     Original Criteria: ${input.criteria.map(c => `${c.name} (${c.weight})`).join(", ")}
 
     Current Analysis Summary: "${currentAnalysis.summary}"
@@ -151,11 +183,13 @@ export const refineAnalysis = async (input: DecisionInput, currentAnalysis: Anal
 
     Task:
     Update the entire analysis (criteria, options, scores, recommendation) to reflect the user's instruction. 
+    - **Correct any existing spelling errors.**
     - If they add an option, evaluate it.
     - If they change criteria importance, adjust the weights and scores.
     - If they correct a fact, update the pros/cons.
     - Maintain the same structured JSON format.
     - If you add new options based on refinement, you may score them normally if the user requested them, or use -1 if they are just suggestions.
+    - **IMPORTANT**: Populate the 'changesFromPrevious' field with 1-3 concise bullet points summarizing specifically what you changed (e.g., "Increased weight of Cost to 5", "Added new option 'Rent Apartment'", "Updated pros for Option A").
 
     Safety rules apply: If the refinement introduces self-harm or illegal acts, return a safety warning.
   `;
