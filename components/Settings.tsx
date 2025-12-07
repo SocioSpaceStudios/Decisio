@@ -1,15 +1,26 @@
 import React from 'react';
 import { UserSettings } from '../types';
-import { User, Moon, Sun, Monitor, Trash2, Save, Check } from 'lucide-react';
+import { User, Moon, Sun, Monitor, Trash2, Save, Check, Cloud, LogIn, LogOut, CheckCircle2 } from 'lucide-react';
 
 interface SettingsProps {
   settings: UserSettings;
   onUpdateSettings: (newSettings: UserSettings) => void;
   onClearHistory: () => void;
   historyCount: number;
+  user?: any; // Firebase User
+  onSignIn?: () => void;
+  onSignOut?: () => void;
 }
 
-const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, onClearHistory, historyCount }) => {
+const Settings: React.FC<SettingsProps> = ({ 
+    settings, 
+    onUpdateSettings, 
+    onClearHistory, 
+    historyCount,
+    user,
+    onSignIn,
+    onSignOut
+}) => {
   
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onUpdateSettings({ ...settings, displayName: e.target.value });
@@ -20,17 +31,58 @@ const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, onClear
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-in-up">
+    <div className="max-w-2xl mx-auto animate-fade-in-up pb-20">
       <div className="flex justify-between items-end mb-8 px-2">
         <h1 className="text-3xl font-black text-slate-900 dark:text-white">Settings</h1>
       </div>
 
       <div className="space-y-6">
         
+        {/* Cloud Sync / Auth */}
+        <div className="glass-card rounded-3xl p-8 border-l-4 border-blue-500">
+             <div className="flex items-start justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400">
+                        <Cloud size={24} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Cloud Sync</h2>
+                        {user ? (
+                            <p className="text-xs text-green-600 dark:text-green-400 font-bold flex items-center gap-1 mt-1">
+                                <CheckCircle2 size={12}/> Synced as {user.email}
+                            </p>
+                        ) : (
+                            <p className="text-xs text-slate-500 font-medium mt-1">
+                                Sign in to save decisions across devices
+                            </p>
+                        )}
+                    </div>
+                </div>
+             </div>
+
+             <div className="mt-6">
+                {user ? (
+                    <button 
+                        onClick={onSignOut}
+                        className="w-full sm:w-auto px-5 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                    >
+                        <LogOut size={18} /> Sign Out
+                    </button>
+                ) : (
+                    <button 
+                        onClick={onSignIn}
+                        className="w-full sm:w-auto px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30"
+                    >
+                        <LogIn size={18} /> Sign In with Google
+                    </button>
+                )}
+             </div>
+        </div>
+
         {/* Profile */}
         <div className="glass-card rounded-3xl p-8">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400">
+            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600 dark:text-purple-400">
                 <User size={24} />
             </div>
             <div>

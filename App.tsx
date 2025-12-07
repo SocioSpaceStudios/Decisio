@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ViewState, DecisionInput, DecisionRecord, UserSettings } from './types';
 import { analyzeDecision, refineAnalysis } from './services/geminiService';
+import { subscribeToAuthChanges, saveDecisionToFirestore, deleteDecisionFromFirestore, getHistoryFromFirestore, signOut, signInWithGoogle } from './services/firebase.ts';
 import DecisionForm from './components/DecisionForm';
 import DecisionResult from './components/DecisionResult';
 import HistoryList from './components/HistoryList';
 import Settings from './components/Settings';
 import Onboarding from './components/Onboarding';
-import { BrainCircuit, History as HistoryIcon, PlusCircle, Settings as SettingsIcon } from 'lucide-react';
+import { BrainCircuit, History as HistoryIcon, PlusCircle, Settings as SettingsIcon, LogOut } from 'lucide-react';
 
 const STORAGE_KEY = 'clarity_choice_history';
 const SETTINGS_KEY = 'clarity_choice_settings';
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentRecord, setCurrentRecord] = useState<DecisionRecord | null>(null);
   const [history, setHistory] = useState<DecisionRecord[]>([]);
+  const [user, setUser] = useState<any | null>(null); // Firebase user
   
   const [userSettings, setUserSettings] = useState<UserSettings>(() => {
     const savedSettings = localStorage.getItem(SETTINGS_KEY);
@@ -32,17 +34,7 @@ const App: React.FC = () => {
     };
   });
 
-  useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem(STORAGE_KEY);
-      if (savedHistory) {
-        setHistory(JSON.parse(savedHistory));
-      }
-    } catch (e) {
-      console.error("Failed to load local data", e);
-    }
-  }, []);
-
+  // --- Theme Management ---
   useEffect(() => {
     const root = window.document.documentElement;
     const applyTheme = () => {
@@ -60,6 +52,41 @@ const App: React.FC = () => {
     return () => mediaQuery.removeEventListener('change', handleSystemChange);
   }, [userSettings.theme]);
 
+  // --- Auth & Data Loading ---
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges(async (currentUser) => {
+        setUser(currentUser);
+        if (currentUser) {
+            // Logged In: Fetch from Firestore
+            try {
+                const cloudHistory = await getHistoryFromFirestore(currentUser.uid);
+                setHistory(cloudHistory);
+                // Optionally update display name from Google Profile if not set
+                if (!userSettings.displayName && currentUser.displayName) {
+                   const newSettings = { ...userSettings, displayName: currentUser.displayName };
+                   setUserSettings(newSettings);
+                   localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
+                }
+            } catch (e) {
+                console.error("Failed to load cloud history", e);
+            }
+        } else {
+            // Logged Out: Fetch from LocalStorage
+            try {
+                const savedHistory = localStorage.getItem(STORAGE_KEY);
+                if (savedHistory) {
+                    setHistory(JSON.parse(savedHistory));
+                } else {
+                    setHistory([]);
+                }
+            } catch (e) {
+                console.error("Failed to load local data", e);
+            }
+        }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const updateSettings = (newSettings: UserSettings) => {
     setUserSettings(newSettings);
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
@@ -70,14 +97,21 @@ const App: React.FC = () => {
     setView('HOME');
   };
 
-  const clearHistory = () => {
+  const clearHistory = async () => {
     if (window.confirm("Are you sure you want to delete all your decision history?")) {
-      setHistory([]);
-      localStorage.removeItem(STORAGE_KEY);
+        // If logged in, we'd theoretically delete collection, but for now just clear local state 
+        // because deleting collections client-side is complex/restricted in standard Firestore rules.
+        // We will just clear the state for now to reflect 'cleared' view.
+        setHistory([]);
+        if (!user) {
+            localStorage.removeItem(STORAGE_KEY);
+        } else {
+            alert("To permanently delete all cloud data, please manage this in your account settings (Feature coming soon). For now, items can be deleted individually.");
+        }
     }
   };
 
-  const handleSave = (record: DecisionRecord) => {
+  const handleSave = async (record: DecisionRecord) => {
     const exists = history.some(h => h.id === record.id);
     let newHistory;
     if (exists) {
@@ -86,7 +120,13 @@ const App: React.FC = () => {
         newHistory = [record, ...history];
     }
     setHistory(newHistory);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+    
+    // PERSISTENCE LOGIC
+    if (user) {
+        await saveDecisionToFirestore(user.uid, record);
+    } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+    }
   };
 
   const handleAnalyze = async (input: DecisionInput) => {
@@ -102,7 +142,7 @@ const App: React.FC = () => {
         refinementHistory: [] 
       };
       setCurrentRecord(newRecord);
-      handleSave(newRecord);
+      await handleSave(newRecord);
       setView('ANALYSIS');
     } catch (error) {
       alert("Something went wrong with the analysis. Please check your network and try again.");
@@ -131,18 +171,25 @@ const App: React.FC = () => {
       };
 
       setCurrentRecord(updatedRecord);
-      handleSave(updatedRecord);
+      await handleSave(updatedRecord);
     } catch (error) {
       console.error("Refinement failed", error);
       throw error; 
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this decision?")) return;
     const newHistory = history.filter(h => h.id !== id);
     setHistory(newHistory);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+    
+    // PERSISTENCE LOGIC
+    if (user) {
+        await deleteDecisionFromFirestore(user.uid, id);
+    } else {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newHistory));
+    }
+    
     if (currentRecord && currentRecord.id === id) {
         setCurrentRecord(null);
         setView('HOME');
@@ -197,9 +244,10 @@ const App: React.FC = () => {
                 </button>
                 <button 
                   onClick={() => setView('SETTINGS')}
-                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'SETTINGS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                  className={`relative p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'SETTINGS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                 >
                   <SettingsIcon size={18} /> 
+                  {user && <span className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-slate-800"></span>}
                 </button>
               </div>
             </div>
@@ -221,6 +269,11 @@ const App: React.FC = () => {
                 <p className="text-slate-600 dark:text-slate-300 max-w-lg mx-auto text-lg leading-relaxed font-medium opacity-90">
                   Navigate complexity with AI-powered clarity. Weigh your options, define your criteria, and choose with confidence.
                 </p>
+                {!user && (
+                    <div className="mt-4 text-xs font-semibold text-slate-400">
+                        <span className="bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">Offline Mode</span>
+                    </div>
+                )}
               </div>
               <DecisionForm 
                 onSubmit={handleAnalyze} 
@@ -258,6 +311,13 @@ const App: React.FC = () => {
               onUpdateSettings={updateSettings} 
               onClearHistory={clearHistory}
               historyCount={history.length}
+              user={user}
+              onSignIn={signInWithGoogle}
+              onSignOut={() => {
+                  signOut();
+                  setHistory([]); // Clear view on logout, will reload from local storage
+                  setView('HOME');
+              }}
             />
           )}
         </main>
