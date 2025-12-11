@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -15,9 +16,10 @@ import {
     deleteDoc, 
     getDocs, 
     query, 
-    orderBy 
+    orderBy,
+    addDoc 
 } from 'firebase/firestore';
-import { DecisionRecord } from '../types';
+import { DecisionRecord, FeedbackSubmission } from '../types';
 
 // --- CONFIGURATION ---
 // IMPORTANT: Replace the values below with your specific Firebase Project config.
@@ -31,15 +33,27 @@ const firebaseConfig = {
   appId: process.env.FIREBASE_APP_ID || "YOUR_APP_ID"
 };
 
+// --- VALIDATION CHECK ---
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY_HERE";
+
+if (!isConfigured) {
+    console.warn("⚠️ Firebase is not configured. Please update services/firebase.ts with your Firebase keys.");
+}
+
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// We only initialize if configured to avoid crashing the app immediately with invalid config errors
+const app = isConfigured ? initializeApp(firebaseConfig) : undefined;
+const auth = app ? getAuth(app) : undefined;
+const db = app ? getFirestore(app) : undefined;
 const googleProvider = new GoogleAuthProvider();
 
 // --- AUTH SERVICES ---
 
 export const signInWithGoogle = async () => {
+    if (!auth) {
+        alert("Firebase is not configured. Please see the console for details.");
+        return;
+    }
     try {
         const result = await signInWithPopup(auth, googleProvider);
         return result.user;
@@ -50,6 +64,7 @@ export const signInWithGoogle = async () => {
 };
 
 export const signOut = async () => {
+    if (!auth) return;
     try {
         await firebaseSignOut(auth);
     } catch (error) {
@@ -58,12 +73,18 @@ export const signOut = async () => {
 };
 
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
+    if (!auth) {
+        // If not configured, just behave as if logged out
+        callback(null);
+        return () => {};
+    }
     return onAuthStateChanged(auth, callback);
 };
 
 // --- DATABASE SERVICES ---
 
 export const saveDecisionToFirestore = async (userId: string, record: DecisionRecord) => {
+    if (!db) return;
     try {
         const decisionRef = doc(db, 'users', userId, 'decisions', record.id);
         await setDoc(decisionRef, record);
@@ -74,6 +95,7 @@ export const saveDecisionToFirestore = async (userId: string, record: DecisionRe
 };
 
 export const deleteDecisionFromFirestore = async (userId: string, recordId: string) => {
+    if (!db) return;
     try {
         const decisionRef = doc(db, 'users', userId, 'decisions', recordId);
         await deleteDoc(decisionRef);
@@ -84,6 +106,7 @@ export const deleteDecisionFromFirestore = async (userId: string, recordId: stri
 };
 
 export const getHistoryFromFirestore = async (userId: string): Promise<DecisionRecord[]> => {
+    if (!db) return [];
     try {
         const q = query(collection(db, 'users', userId, 'decisions'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -94,6 +117,19 @@ export const getHistoryFromFirestore = async (userId: string): Promise<DecisionR
         return history;
     } catch (error) {
         console.error("Error fetching history from Firestore", error);
+        throw error;
+    }
+};
+
+export const submitFeedback = async (feedback: FeedbackSubmission) => {
+    if (!db) {
+        console.log("Mocking feedback submission (DB not ready):", feedback);
+        return;
+    }
+    try {
+        await addDoc(collection(db, 'feedback'), feedback);
+    } catch (error) {
+        console.error("Error submitting feedback", error);
         throw error;
     }
 };

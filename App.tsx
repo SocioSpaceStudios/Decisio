@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ViewState, DecisionInput, DecisionRecord, UserSettings } from './types';
 import { analyzeDecision, refineAnalysis } from './services/geminiService';
@@ -7,7 +8,7 @@ import DecisionResult from './components/DecisionResult';
 import HistoryList from './components/HistoryList';
 import Settings from './components/Settings';
 import Onboarding from './components/Onboarding';
-import { BrainCircuit, History as HistoryIcon, PlusCircle, Settings as SettingsIcon, LogOut } from 'lucide-react';
+import { Bird, History as HistoryIcon, PlusCircle, Settings as SettingsIcon, LogOut, Compass, Sparkles } from 'lucide-react';
 
 const STORAGE_KEY = 'clarity_choice_history';
 const SETTINGS_KEY = 'clarity_choice_settings';
@@ -30,7 +31,9 @@ const App: React.FC = () => {
     const savedSettings = localStorage.getItem(SETTINGS_KEY);
     return savedSettings ? JSON.parse(savedSettings) : {
       displayName: '',
-      theme: 'system'
+      email: '',
+      theme: 'system',
+      decisionMethod: 'balanced'
     };
   });
 
@@ -61,12 +64,25 @@ const App: React.FC = () => {
             try {
                 const cloudHistory = await getHistoryFromFirestore(currentUser.uid);
                 setHistory(cloudHistory);
-                // Optionally update display name from Google Profile if not set
+                
+                // Update local settings if cloud profile has data
+                const newSettings = { ...userSettings };
+                let settingsChanged = false;
+
                 if (!userSettings.displayName && currentUser.displayName) {
-                   const newSettings = { ...userSettings, displayName: currentUser.displayName };
+                    newSettings.displayName = currentUser.displayName;
+                    settingsChanged = true;
+                }
+                if (!userSettings.email && currentUser.email) {
+                    newSettings.email = currentUser.email;
+                    settingsChanged = true;
+                }
+
+                if (settingsChanged) {
                    setUserSettings(newSettings);
                    localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
                 }
+
             } catch (e) {
                 console.error("Failed to load cloud history", e);
             }
@@ -99,14 +115,11 @@ const App: React.FC = () => {
 
   const clearHistory = async () => {
     if (window.confirm("Are you sure you want to delete all your decision history?")) {
-        // If logged in, we'd theoretically delete collection, but for now just clear local state 
-        // because deleting collections client-side is complex/restricted in standard Firestore rules.
-        // We will just clear the state for now to reflect 'cleared' view.
         setHistory([]);
         if (!user) {
             localStorage.removeItem(STORAGE_KEY);
         } else {
-            alert("To permanently delete all cloud data, please manage this in your account settings (Feature coming soon). For now, items can be deleted individually.");
+            alert("To permanently delete all cloud data, please manage this in your account settings.");
         }
     }
   };
@@ -121,7 +134,6 @@ const App: React.FC = () => {
     }
     setHistory(newHistory);
     
-    // PERSISTENCE LOGIC
     if (user) {
         await saveDecisionToFirestore(user.uid, record);
     } else {
@@ -183,7 +195,6 @@ const App: React.FC = () => {
     const newHistory = history.filter(h => h.id !== id);
     setHistory(newHistory);
     
-    // PERSISTENCE LOGIC
     if (user) {
         await deleteDecisionFromFirestore(user.uid, id);
     } else {
@@ -197,13 +208,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen text-slate-900 dark:text-slate-100 pb-20 relative overflow-x-hidden font-sans selection:bg-purple-200 dark:selection:bg-purple-900">
-      
-      {/* Animated Aurora Background */}
-      <div className="bg-aurora"></div>
-      
-      {/* Noise Texture */}
-      <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none z-0 mix-blend-overlay"></div>
+    <div className="min-h-screen pb-24 md:pb-10 relative overflow-x-hidden font-sans selection:bg-pink-100 dark:selection:bg-pink-900">
       
       {/* Onboarding Overlay */}
       {view === 'ONBOARDING' && (
@@ -214,67 +219,40 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Floating Glass Navigation */}
-      {view !== 'ONBOARDING' && (
-        <nav className="fixed top-6 left-0 right-0 z-40 px-4 pointer-events-none">
-          <div className="max-w-4xl mx-auto pointer-events-auto">
-            <div className="glass-card rounded-full px-4 py-3 flex items-center justify-between shadow-lg">
-              <div 
-                className="flex items-center gap-3 cursor-pointer group pl-2"
-                onClick={() => { setView('HOME'); setCurrentRecord(null); }}
-              >
-                <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-md transform transition-transform group-hover:rotate-12">
-                  <BrainCircuit size={20} />
-                </div>
-                <span className="font-extrabold text-xl tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600 dark:from-white dark:to-slate-300">Decisio</span>
-              </div>
-              
-              <div className="flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-full">
-                <button 
-                  onClick={() => { setView('HOME'); setCurrentRecord(null); }}
-                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'HOME' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                >
-                  <PlusCircle size={18} /> <span className="hidden sm:inline">New</span>
-                </button>
-                <button 
-                  onClick={() => setView('HISTORY')}
-                  className={`p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'HISTORY' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                >
-                  <HistoryIcon size={18} /> <span className="hidden sm:inline">History</span>
-                </button>
-                <button 
-                  onClick={() => setView('SETTINGS')}
-                  className={`relative p-2.5 rounded-full flex items-center gap-2 text-sm font-bold transition-all ${view === 'SETTINGS' ? 'bg-white dark:bg-slate-700 shadow-sm text-purple-600 dark:text-purple-300' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
-                >
-                  <SettingsIcon size={18} /> 
-                  {user && <span className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full border border-white dark:border-slate-800"></span>}
-                </button>
-              </div>
-            </div>
-          </div>
-        </nav>
-      )}
-
       {/* Main Content */}
       {view !== 'ONBOARDING' && (
-        <main className="max-w-3xl mx-auto px-4 pt-32 relative z-10">
+        <main className="max-w-xl mx-auto px-4 pt-12 md:pt-16 relative z-10">
+          
+          {/* Header Area */}
+          <div className="flex justify-between items-center mb-6">
+             <div 
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => { setView('HOME'); setCurrentRecord(null); }}
+             >
+                 {/* Mascot Icon */}
+                <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-violet-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-pink-200 dark:shadow-none">
+                  <Bird size={24} strokeWidth={2.5} />
+                </div>
+                <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white">Decisio</span>
+             </div>
+             {user && (
+                 <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-sm font-bold text-slate-600 dark:text-slate-300">
+                     {userSettings.displayName.charAt(0)}
+                 </div>
+             )}
+          </div>
+
           {view === 'HOME' && (
             <div className="animate-fade-in-up">
-              <div className="text-center mb-12">
-                <div className="inline-block animate-float">
-                    <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-gradient leading-tight filter drop-shadow-sm">
-                    Decide Better.
-                    </h1>
-                </div>
-                <p className="text-slate-600 dark:text-slate-300 max-w-lg mx-auto text-lg leading-relaxed font-medium opacity-90">
-                  Navigate complexity with AI-powered clarity. Weigh your options, define your criteria, and choose with confidence.
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold mb-2 text-slate-900 dark:text-white">
+                    Welcome back{userSettings.displayName ? `, ${userSettings.displayName}` : ''}
+                </h1>
+                <p className="text-slate-500 dark:text-slate-400">
+                  What decision are you facing today?
                 </p>
-                {!user && (
-                    <div className="mt-4 text-xs font-semibold text-slate-400">
-                        <span className="bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">Offline Mode</span>
-                    </div>
-                )}
               </div>
+              
               <DecisionForm 
                 onSubmit={handleAnalyze} 
                 isLoading={isLoading} 
@@ -315,12 +293,43 @@ const App: React.FC = () => {
               onSignIn={signInWithGoogle}
               onSignOut={() => {
                   signOut();
-                  setHistory([]); // Clear view on logout, will reload from local storage
+                  setHistory([]);
                   setView('HOME');
               }}
             />
           )}
         </main>
+      )}
+
+      {/* Mobile Bottom Navigation (Simulating App Feel) */}
+      {view !== 'ONBOARDING' && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 pb-safe">
+          <div className="max-w-md mx-auto flex justify-around items-center p-2">
+            <button 
+                onClick={() => { setView('HOME'); setCurrentRecord(null); }}
+                className={`flex flex-col items-center gap-1 p-3 rounded-2xl transition-all ${view === 'HOME' ? 'text-pink-600 dark:text-pink-400' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+                <Compass size={24} strokeWidth={view === 'HOME' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Decide</span>
+            </button>
+            
+            <button 
+                onClick={() => setView('HISTORY')}
+                className={`flex flex-col items-center gap-1 p-3 rounded-2xl transition-all ${view === 'HISTORY' ? 'text-pink-600 dark:text-pink-400' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+                <HistoryIcon size={24} strokeWidth={view === 'HISTORY' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">History</span>
+            </button>
+
+            <button 
+                onClick={() => setView('SETTINGS')}
+                className={`flex flex-col items-center gap-1 p-3 rounded-2xl transition-all ${view === 'SETTINGS' ? 'text-pink-600 dark:text-pink-400' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+                <SettingsIcon size={24} strokeWidth={view === 'SETTINGS' ? 2.5 : 2} />
+                <span className="text-[10px] font-bold">Settings</span>
+            </button>
+          </div>
+        </nav>
       )}
 
     </div>

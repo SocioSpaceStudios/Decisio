@@ -1,3 +1,4 @@
+
 export interface Criterion {
   id: string;
   name: string;
@@ -57,7 +58,17 @@ export interface DecisionRecord {
 
 export interface UserSettings {
   displayName: string;
+  email: string; // Added email requirement
   theme: 'light' | 'dark' | 'system';
+  decisionMethod: 'analytical' | 'intuitive' | 'balanced' | 'quick'; // New field for settings
+}
+
+export interface FeedbackSubmission {
+  type: 'bug' | 'suggestion' | 'other';
+  message: string;
+  email?: string;
+  timestamp: number;
+  userId?: string;
 }
 
 export type ViewState = 'HOME' | 'ANALYSIS' | 'HISTORY' | 'SETTINGS' | 'ONBOARDING';

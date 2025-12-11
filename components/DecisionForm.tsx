@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { DecisionInput, Criterion, OptionItem } from '../types';
 import { Plus, Trash2, Loader2, Sparkles, Image as ImageIcon, FileText, Music, Type, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -179,57 +180,56 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
     });
   };
 
+  const exampleDecisions = [
+      "Should I change careers?",
+      "Which city should I move to?",
+      "Should I start a business?"
+  ];
+
   return (
     <div className="max-w-3xl mx-auto">
-        {/* Progress Pills */}
-        <div className="flex justify-center mb-8 gap-2">
+        {/* Progress Bars for Steps */}
+        <div className="flex gap-2 mb-6">
             {[1, 2, 3].map(s => (
                 <div 
                     key={s} 
-                    className={`h-1.5 rounded-full transition-all duration-500 ${step >= s ? 'w-12 bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'w-4 bg-slate-300 dark:bg-slate-700'}`}
+                    className={`h-1.5 rounded-full flex-1 transition-all duration-300 ${
+                        s <= step ? 'bg-gradient-to-r from-pink-500 to-violet-500' : 'bg-slate-200 dark:bg-slate-700'
+                    }`}
                 />
             ))}
         </div>
 
-      <div className="glass-card rounded-[2rem] p-8 sm:p-12 min-h-[500px] flex flex-col relative overflow-hidden">
+      <div className="card-modern rounded-[2rem] p-6 sm:p-8 min-h-[500px] flex flex-col relative overflow-hidden">
         
         {/* Step 1: Question */}
         {step === 1 && (
             <div className="flex-1 flex flex-col animate-fade-in">
-                <div className="flex justify-between items-center mb-8">
-                    <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 01</span>
-                    <button
-                        type="button"
-                        onClick={suggestDecision}
-                        disabled={isSuggestingDecision}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
-                    >
-                        {isSuggestingDecision ? (
-                           <>
-                             <Loader2 size={12} className="animate-spin mr-1"/> Drafting...
-                           </>
-                        ) : (
-                           <>
-                             <Sparkles size={12} className="mr-1"/> AI Assist
-                           </>
-                        )}
-                    </button>
-                </div>
-                
-                <h2 className="text-4xl font-black mb-6 text-slate-900 dark:text-white leading-tight">
-                    What's on your mind?
-                </h2>
+                <textarea
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder="e.g. Should I accept the job offer in New York?"
+                    className="w-full h-40 p-6 text-xl font-medium rounded-2xl bg-slate-50 dark:bg-slate-800/50 border-none resize-none placeholder:text-slate-400 focus:ring-2 focus:ring-pink-500/20"
+                    autoFocus
+                    spellCheck={true}
+                    lang="en"
+                />
 
-                <div className="flex-1 flex flex-col">
-                    <textarea
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="e.g. Should I accept the job offer in New York or stay in London?"
-                        className="w-full flex-1 p-6 text-2xl font-medium rounded-2xl input-sleek resize-none placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                        autoFocus
-                        spellCheck={true}
-                        lang="en"
-                    />
+                <div className="mt-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-1">
+                        <Sparkles size={12}/> Try an example
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {exampleDecisions.map((ex, i) => (
+                            <button
+                                key={i}
+                                onClick={() => setQuestion(ex)}
+                                className="px-4 py-2 rounded-full bg-white border border-slate-200 text-sm font-medium text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-colors shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300"
+                            >
+                                {ex}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
         )}
@@ -238,27 +238,20 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
         {step === 2 && (
             <div className="flex-1 flex flex-col animate-fade-in">
                  <div className="flex justify-between items-center mb-6">
-                     <div>
-                        <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 02</span>
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white">Your Options</h2>
-                     </div>
-                     <div className="flex flex-col items-end gap-1">
-                        <span className="text-[10px] uppercase font-bold text-slate-400">Input Type</span>
-                        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                            {(['text', 'image', 'file', 'audio'] as ComparisonMode[]).map(mode => (
-                                <button
-                                    key={mode}
-                                    onClick={() => handleModeChange(mode)}
-                                    className={`p-2 rounded-lg transition-all ${comparisonMode === mode ? 'bg-white dark:bg-slate-600 shadow-sm text-purple-600 dark:text-white' : 'text-slate-400 hover:text-purple-500'}`}
-                                    title={mode}
-                                >
-                                    {mode === 'text' && <Type size={18}/>}
-                                    {mode === 'image' && <ImageIcon size={18}/>}
-                                    {mode === 'file' && <FileText size={18}/>}
-                                    {mode === 'audio' && <Music size={18}/>}
-                                </button>
-                            ))}
-                        </div>
+                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Add Options</h2>
+                     <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                        {(['text', 'image', 'file', 'audio'] as ComparisonMode[]).map(mode => (
+                            <button
+                                key={mode}
+                                onClick={() => handleModeChange(mode)}
+                                className={`p-2 rounded-lg transition-all ${comparisonMode === mode ? 'bg-white dark:bg-slate-600 shadow-sm text-pink-500 dark:text-white' : 'text-slate-400 hover:text-pink-400'}`}
+                            >
+                                {mode === 'text' && <Type size={18}/>}
+                                {mode === 'image' && <ImageIcon size={18}/>}
+                                {mode === 'file' && <FileText size={18}/>}
+                                {mode === 'audio' && <Music size={18}/>}
+                            </button>
+                        ))}
                      </div>
                  </div>
                  
@@ -270,9 +263,12 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
                     onChange={handleFileSelect}
                 />
 
-                 <div className="space-y-4 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
+                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
                     {options.map((option, index) => (
-                        <div key={option.id} className="flex gap-3 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
+                        <div key={option.id} className="flex gap-2 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
+                             <div className="w-8 h-8 rounded-full bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-sm">
+                                 {index + 1}
+                             </div>
                             <div className="flex-1">
                                 {comparisonMode === 'text' ? (
                                     <input
@@ -280,66 +276,41 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
                                         value={option.text}
                                         onChange={(e) => handleOptionChange(option.id, e.target.value)}
                                         placeholder={`Option ${index + 1}`}
-                                        className="w-full px-5 py-4 rounded-xl input-sleek text-lg font-medium"
+                                        className="w-full px-4 py-3 rounded-xl input-soft text-base font-medium"
                                         autoFocus={index === options.length - 1 && options.length > 2}
-                                        spellCheck={true}
-                                        lang="en"
                                     />
                                 ) : (
-                                    <div className="flex items-center gap-4 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                                        <div className="w-12 h-12 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-purple-500 shadow-sm overflow-hidden flex-shrink-0">
+                                    <div className="flex items-center gap-3 p-2 rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                        <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-pink-500 shadow-sm overflow-hidden flex-shrink-0">
                                             {option.type === 'image' && option.fileData ? (
                                                 <img src={`data:${option.mimeType};base64,${option.fileData}`} alt="Preview" className="w-full h-full object-cover" />
-                                            ) : option.type === 'audio' ? <Music size={24} /> : <FileText size={24} />}
+                                            ) : <FileText size={20} />}
                                         </div>
-                                        <input
-                                            type="text"
-                                            value={option.text}
-                                            onChange={(e) => handleOptionChange(option.id, e.target.value)}
-                                            placeholder="Label this..."
-                                            className="flex-1 bg-transparent border-none outline-none font-medium text-lg"
-                                            spellCheck={true}
-                                        />
+                                        <span className="text-sm font-medium">{option.text}</span>
                                     </div>
                                 )}
                             </div>
-                            <button onClick={() => handleRemoveOption(option.id)} className="p-3 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                <Trash2 size={20} />
+                            <button onClick={() => handleRemoveOption(option.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                <Trash2 size={18} />
                             </button>
                         </div>
                     ))}
-                    
-                    {comparisonMode !== 'text' && options.length === 0 && (
-                         <div onClick={triggerFileUpload} className="cursor-pointer border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-10 flex flex-col items-center justify-center text-slate-400 hover:border-purple-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/10 transition-all">
-                             <Plus size={32} className="mb-2"/>
-                             <span className="font-semibold">Upload {comparisonMode}s</span>
-                         </div>
-                    )}
                  </div>
-
-                 <div className="flex justify-between items-center mt-6">
-                     <button
+                 
+                 <div className="mt-4 flex gap-2">
+                    <button
                         onClick={comparisonMode === 'text' ? handleAddTextOption : triggerFileUpload}
-                        className="text-purple-600 dark:text-purple-400 font-bold flex items-center gap-2 px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                        className="flex-1 py-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 text-slate-500 font-bold hover:border-pink-300 hover:text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-all flex justify-center items-center gap-2"
                     >
-                        <Plus size={20} /> Add Option
+                        <Plus size={18} /> Add Option
                     </button>
-                    
                     {comparisonMode === 'text' && (
                         <button
                             onClick={suggestOptions}
                             disabled={isSuggestingOptions}
-                            className="text-sm font-bold text-slate-500 hover:text-purple-600 flex items-center gap-2 transition-colors"
+                            className="px-4 py-3 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-300 font-bold hover:bg-purple-100 transition-colors"
                         >
-                            {isSuggestingOptions ? (
-                                <>
-                                    <Loader2 size={16} className="animate-spin"/> Brainstorming...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles size={16}/> Brainstorm
-                                </>
-                            )}
+                            {isSuggestingOptions ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>}
                         </button>
                     )}
                  </div>
@@ -350,52 +321,39 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
         {step === 3 && (
             <div className="flex-1 flex flex-col animate-fade-in">
                 <div className="flex justify-between items-center mb-6">
-                     <div>
-                        <span className="text-sm font-bold tracking-widest text-purple-600 dark:text-purple-400 uppercase">Step 03</span>
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white">Success Criteria</h2>
-                     </div>
-                    <button
+                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white">What Matters?</h2>
+                     <button
                         onClick={suggestCriteria}
                         disabled={isSuggestingCriteria}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                        className="text-xs font-bold px-3 py-1.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 transition-colors flex items-center gap-1"
                     >
-                        {isSuggestingCriteria ? (
-                            <>
-                                <Loader2 size={12} className="animate-spin mr-1"/> Generating...
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles size={12} className="mr-1"/> Auto-Generate
-                            </>
-                        )}
+                        {isSuggestingCriteria ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Auto
                     </button>
                 </div>
 
                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
                     {criteria.map((criterion, index) => (
-                        <div key={criterion.id} className="flex gap-3 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
-                             <div className="flex-1 flex items-center input-sleek rounded-xl p-2 pl-4 focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-purple-500">
+                        <div key={criterion.id} className="flex gap-2 items-center group animate-fade-in-up" style={{animationDelay: `${index * 50}ms`}}>
+                             <div className="flex-1 flex items-center input-soft rounded-xl p-2 pl-4">
                                  <input
                                     type="text"
                                     value={criterion.name}
                                     onChange={(e) => handleCriterionChange(criterion.id, 'name', e.target.value)}
-                                    placeholder="e.g. Cost, Time, Effort"
-                                    className="flex-1 bg-transparent outline-none font-bold text-lg"
-                                    spellCheck={true}
-                                    lang="en"
+                                    placeholder="e.g. Cost, Time"
+                                    className="flex-1 bg-transparent outline-none font-bold text-base"
                                 />
                                 <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700 mx-2"></div>
                                 <select
                                     value={criterion.weight}
                                     onChange={(e) => handleCriterionChange(criterion.id, 'weight', parseInt(e.target.value))}
-                                    className="bg-transparent text-sm font-bold text-purple-600 dark:text-purple-400 outline-none cursor-pointer pr-2"
+                                    className="bg-transparent text-sm font-bold text-pink-600 dark:text-pink-400 outline-none cursor-pointer pr-2"
                                 >
                                     {[1, 2, 3, 4, 5].map(w => <option key={w} value={w}>Imp: {w}</option>)}
                                 </select>
                              </div>
                              {criteria.length > 1 && (
-                                <button onClick={() => handleRemoveCriterion(criterion.id)} className="p-3 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                    <Trash2 size={20} />
+                                <button onClick={() => handleRemoveCriterion(criterion.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                    <Trash2 size={18} />
                                 </button>
                              )}
                         </div>
@@ -403,20 +361,20 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
                     
                     <button
                         onClick={handleAddCriterion}
-                        className="w-full py-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-purple-600 hover:border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/10 font-bold flex justify-center items-center gap-2 transition-all mt-4"
+                        className="w-full py-3 mt-2 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl text-slate-400 hover:text-pink-600 hover:border-pink-300 hover:bg-pink-50 transition-all font-bold flex justify-center items-center gap-2"
                     >
-                        <Plus size={20} /> Add Criterion
+                        <Plus size={18} /> Add Criterion
                     </button>
                 </div>
             </div>
         )}
 
         {/* Navigation Footer */}
-        <div className="mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
             {step > 1 ? (
                 <button 
                     onClick={prevStep}
-                    className="flex items-center gap-2 text-slate-500 hover:text-purple-600 dark:text-slate-400 dark:hover:text-purple-300 font-bold px-4 py-2 rounded-lg transition-colors"
+                    className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold px-4 py-2 transition-colors"
                 >
                     <ArrowLeft size={18} /> Back
                 </button>
@@ -428,18 +386,18 @@ const DecisionForm: React.FC<DecisionFormProps> = ({ onSubmit, isLoading, displa
                 <button
                     onClick={nextStep}
                     disabled={(step === 1 && !isQuestionValid) || (step === 2 && !isOptionsValid)}
-                    className="btn-glow px-10 py-4 rounded-2xl font-bold shadow-lg flex items-center gap-2"
+                    className="btn-vibe px-8 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"
                 >
-                    Next Step <ArrowRight size={20} />
+                    Continue <ArrowRight size={18} />
                 </button>
             ) : (
                 <button
                     onClick={handleSubmit}
                     disabled={isLoading}
-                    className="btn-glow px-10 py-4 rounded-2xl font-bold shadow-lg flex items-center gap-2"
+                    className="btn-vibe px-10 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"
                 >
-                    {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
-                    {isLoading ? "Thinking..." : "Analyze"}
+                    {isLoading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+                    {isLoading ? "Thinking..." : "Analyze Options"}
                 </button>
             )}
         </div>
